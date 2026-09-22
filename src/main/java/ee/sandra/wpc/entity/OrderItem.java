@@ -1,5 +1,6 @@
 package ee.sandra.wpc.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -15,12 +16,12 @@ public class OrderItem {
     private Long id;
 
     private Integer quantity;
-
     private double priceAtOrder;
 
     @ManyToOne
     private ProductVariant variant;
 
     @ManyToOne
-    private Order order; // see peab viitama ee.sandra.wpc.entity.Order, ILMA eraldi import reata
+    @JsonIgnore // väldib lõputut tsüklit order -> items -> order -> ...
+    private Order order;
 }
