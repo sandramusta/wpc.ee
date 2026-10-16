@@ -27,6 +27,10 @@ public class Order {
     private PaymentState paymentState;
 
     private LocalDateTime createdAt;
+    private String source; // kust klient tuli, nt "meta", "google", "otsing"
+
+    @Column(length = 2000)
+    private String message; // kliendi sõnum päringu juures
 
     @ManyToOne
     private Person person;

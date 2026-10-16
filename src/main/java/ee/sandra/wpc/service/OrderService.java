@@ -8,6 +8,7 @@ import ee.sandra.wpc.repository.PersonRepository;
 import ee.sandra.wpc.repository.ProductVariantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ public class OrderService {
     private final PersonRepository personRepository;
     private final ProductVariantRepository productVariantRepository;
 
+    @Transactional
     public Order saveOrder(OrderRequest request) {
         Person person = personRepository.findById(request.getPersonId()).orElseThrow();
 
@@ -29,11 +31,16 @@ public class OrderService {
         order.setOrderType(request.getOrderType() != null ? request.getOrderType() : OrderType.INQUIRY);
         order.setPaymentState(PaymentState.INITIAL);
         order.setCreatedAt(LocalDateTime.now());
+        order.setSource(request.getSource());
+        order.setMessage(request.getMessage());
 
         List<OrderItem> items = new ArrayList<>();
         double total = 0;
-
         for (OrderItemRequest itemRequest : request.getItems()) {
+            if (itemRequest.getQuantity() == null || itemRequest.getQuantity() <= 0) {
+                throw new RuntimeException("Quantity must be at least 1");
+            }
+
             ProductVariant variant = productVariantRepository.findById(itemRequest.getVariantId()).orElseThrow();
 
             OrderItem item = new OrderItem();
@@ -45,13 +52,18 @@ public class OrderService {
 
             total += variant.getPrice() * itemRequest.getQuantity();
 
-            variant.setStock(variant.getStock() - itemRequest.getQuantity());
-            productVariantRepository.save(variant);
+            // Laoseis väheneb ainult päris ostu puhul, päring laoseisu ei muuda
+            if (order.getOrderType() == OrderType.PURCHASE) {
+                if (variant.getStock() < itemRequest.getQuantity()) {
+                    throw new RuntimeException("Not enough stock for variant " + variant.getId());
+                }
+                variant.setStock(variant.getStock() - itemRequest.getQuantity());
+                productVariantRepository.save(variant);
+            }
         }
 
         order.setItems(items);
         order.setTotal(total);
-
         return orderRepository.save(order);
     }
 }

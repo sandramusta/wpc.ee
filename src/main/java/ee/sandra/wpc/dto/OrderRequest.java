@@ -12,4 +12,6 @@ public class OrderRequest {
     private Long personId;
     private OrderType orderType; // kui tühi, eeldame INQUIRY
     private List<OrderItemRequest> items;
+    private String source;
+    private String message;
 }
