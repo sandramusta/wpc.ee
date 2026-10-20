@@ -24,7 +24,7 @@ public class OrderService {
 
     @Transactional
     public Order saveOrder(OrderRequest request) {
-        Person person = personRepository.findById(request.getPersonId()).orElseThrow();
+        Person person = findOrCreatePerson(request);
 
         Order order = new Order();
         order.setPerson(person);
@@ -65,5 +65,26 @@ public class OrderService {
         order.setItems(items);
         order.setTotal(total);
         return orderRepository.save(order);
+    }
+
+    // Kui personId on antud, võtame selle kliendi.
+    // Muidu otsime kliendi e-posti järgi ja kui teda pole, loome uue.
+    private Person findOrCreatePerson(OrderRequest request) {
+        if (request.getPersonId() != null) {
+            return personRepository.findById(request.getPersonId()).orElseThrow();
+        }
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new RuntimeException("Email is required");
+        }
+        Person existing = personRepository.findByEmail(request.getEmail());
+        if (existing != null) {
+            return existing;
+        }
+        Person person = new Person();
+        person.setFirstName(request.getFirstName());
+        person.setLastName(request.getLastName());
+        person.setEmail(request.getEmail());
+        person.setPhone(request.getPhone());
+        return personRepository.save(person);
     }
 }
