@@ -4,9 +4,12 @@ import ee.sandra.wpc.dto.PaymentBody;
 import ee.sandra.wpc.dto.PaymentLink;
 import ee.sandra.wpc.dto.PaymentResponse;
 import ee.sandra.wpc.entity.Order;
+import ee.sandra.wpc.entity.OrderItem;
 import ee.sandra.wpc.entity.OrderType;
 import ee.sandra.wpc.entity.PaymentState;
+import ee.sandra.wpc.entity.ProductVariant;
 import ee.sandra.wpc.repository.OrderRepository;
+import ee.sandra.wpc.repository.ProductVariantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -14,17 +17,19 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import org.springframework.web.client.HttpClientErrorException;
 
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
 
     private final OrderRepository orderRepository;
+    private final ProductVariantRepository productVariantRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
     // EveryPay andmed tulevad application-dev.properties failist, mitte koodist.
@@ -49,8 +54,10 @@ public class PaymentService {
         if (order.getOrderType() != OrderType.PURCHASE) {
             throw new RuntimeException("Only purchases can be paid");
         }
-        if (order.getPaymentState() == PaymentState.SETTLED) {
-            throw new RuntimeException("Order is already paid");
+        // Maksta saab ainult tellimust, mille makse on veel pooleli.
+        // Ebaõnnestunud tellimuse kaup on juba lattu tagasi pandud, seega seda uuesti maksta ei saa.
+        if (order.getPaymentState() != PaymentState.INITIAL) {
+            throw new RuntimeException("Order cannot be paid, payment state is " + order.getPaymentState());
         }
 
         PaymentBody body = new PaymentBody();
@@ -75,6 +82,7 @@ public class PaymentService {
     }
 
     // Kui klient tuleb EveryPayst tagasi, küsime EveryPaylt, kas makse õnnestus
+    @Transactional
     public Order checkPayment(String paymentReference) {
         HttpEntity<Void> entity = new HttpEntity<>(headers());
         PaymentResponse response = restTemplate.exchange(
@@ -84,8 +92,29 @@ public class PaymentService {
         // "wpc-15-1729420000000" -> 15
         Long orderId = Long.valueOf(response.getOrder_reference().split("-")[1]);
         Order order = orderRepository.findById(orderId).orElseThrow();
-        order.setPaymentState(toPaymentState(response.getPayment_state()));
+        PaymentState oldState = order.getPaymentState();
+        PaymentState newState = toPaymentState(response.getPayment_state());
+
+        // Makse ebaõnnestus: paneme kauba lattu tagasi.
+        // Ainult üks kord: kui klient lehte värskendab, on olek juba FAILED ja teist korda ei lisata.
+        if (isFailed(newState) && !isFailed(oldState)) {
+            returnToStock(order);
+        }
+
+        order.setPaymentState(newState);
         return orderRepository.save(order);
+    }
+
+    private boolean isFailed(PaymentState state) {
+        return state == PaymentState.FAILED || state == PaymentState.ABANDONED || state == PaymentState.VOIDED;
+    }
+
+    private void returnToStock(Order order) {
+        for (OrderItem item : order.getItems()) {
+            ProductVariant variant = item.getVariant();
+            variant.setStock(variant.getStock() + item.getQuantity());
+            productVariantRepository.save(variant);
+        }
     }
 
     private HttpHeaders headers() {
