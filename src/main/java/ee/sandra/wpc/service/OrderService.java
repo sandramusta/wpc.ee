@@ -7,6 +7,7 @@ import ee.sandra.wpc.repository.OrderRepository;
 import ee.sandra.wpc.repository.PersonRepository;
 import ee.sandra.wpc.repository.ProductVariantRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ public class OrderService {
     private final PersonRepository personRepository;
     private final ProductVariantRepository productVariantRepository;
 
+    @CacheEvict(value = "products", allEntries = true) // laoseis võis muutuda
     @Transactional
     public Order saveOrder(OrderRequest request) {
         Person person = findOrCreatePerson(request);
@@ -46,11 +48,12 @@ public class OrderService {
             OrderItem item = new OrderItem();
             item.setVariant(variant);
             item.setQuantity(itemRequest.getQuantity());
-            item.setPriceAtOrder(variant.getPrice());
+            double price = partnerPrice(variant.getPrice(), person); // partnerile soodushind
+            item.setPriceAtOrder(price);
             item.setOrder(order);
             items.add(item);
 
-            total += variant.getPrice() * itemRequest.getQuantity();
+            total += price * itemRequest.getQuantity();
 
             // Laoseis väheneb ainult päris ostu puhul, päring laoseisu ei muuda
             if (order.getOrderType() == OrderType.PURCHASE) {
@@ -65,6 +68,12 @@ public class OrderService {
         order.setItems(items);
         order.setTotal(total);
         return orderRepository.save(order);
+    }
+
+    // Partneri hind: tavahind miinus partneri taseme allahindlus, ümardatud sendini
+    private double partnerPrice(double price, Person person) {
+        int discount = person.getDiscountPercent();
+        return Math.round(price * (100 - discount)) / 100.0;
     }
 
     // Kui personId on antud, võtame selle kliendi.

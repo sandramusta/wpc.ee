@@ -1,5 +1,6 @@
 package ee.sandra.wpc.entity;
 
+import java.io.Serializable;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -10,7 +11,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-public class Product {
+// Serializable: et toodet saaks Redise vahemällu salvestada
+public class Product implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

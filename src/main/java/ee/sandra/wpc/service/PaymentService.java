@@ -16,6 +16,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
@@ -82,6 +83,7 @@ public class PaymentService {
     }
 
     // Kui klient tuleb EveryPayst tagasi, küsime EveryPaylt, kas makse õnnestus
+    @CacheEvict(value = "products", allEntries = true) // laoseis võis muutuda
     @Transactional
     public Order checkPayment(String paymentReference) {
         HttpEntity<Void> entity = new HttpEntity<>(headers());
